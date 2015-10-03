@@ -68,8 +68,10 @@ public class BluetoothDeviceAdapter extends BaseAdapter {
 
         if(device.getBondState() == BluetoothDevice.BOND_BONDED){
             isPaired.setChecked(true);
+            isPaired.setText("Paired");
         }else{
             isPaired.setChecked(false);
+            isPaired.setText("Unpair");
         }
 
         return view;
