@@ -11,16 +11,10 @@ import android.content.IntentFilter;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
-
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.List;
 
 import butterknife.Bind;
 import butterknife.ButterKnife;
@@ -36,11 +30,10 @@ public class MainActivity extends AppCompatActivity {
     @Bind(R.id.button_enable_bluetooth)
     Button buttonEnableBluetooth;
 
-    private List<BluetoothDevice> listBluetoothDevice = new ArrayList<>();
-    private List<String> listBluetoothDeviceName = new ArrayList<>();
-    private ArrayAdapter<String> adapterBluetoothDevice;
+    private BluetoothDeviceAdapter bluetoothDeviceAdapter;
     private BluetoothAdapter mBluetoothAdapter;
     private ProgressDialog scanningProgressDialog;
+    private ProgressDialog pairingProgressDialog;
 
     // Create a BroadcastReceiver for Bluetooth
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
@@ -59,12 +52,14 @@ public class MainActivity extends AppCompatActivity {
                         bluetoothStateText.setText("Bluetooth is off");
                         buttonEnableBluetooth.setText("ENABLE BLUETOOTH");
                         buttonDiscovery.setEnabled(false);
+
+                        bluetoothDeviceAdapter.cleanDeviceList();
+                        bluetoothDeviceAdapter.notifyDataSetChanged();
                     }
 
                     break;
                 case BluetoothAdapter.ACTION_DISCOVERY_STARTED:
-                    listBluetoothDevice.clear();
-                    listBluetoothDeviceName.clear();
+                    bluetoothDeviceAdapter.cleanDeviceList();
                     scanningProgressDialog.show();
                     break;
 
@@ -73,19 +68,16 @@ public class MainActivity extends AppCompatActivity {
                     // Get the BluetoothDevice object from the Intent
                     BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
 
-                    listBluetoothDevice.add(device);
+                    // Add the device to an array to show in a ListView
+                    bluetoothDeviceAdapter.addDevice(device);
 
-                    // Add the name  to an array adapter to show in a ListView
-                    if(device.getBondState() == BluetoothDevice.BOND_BONDED){
-                        listBluetoothDeviceName.add(device.getName() + " (is paired)");
-                    }
-                    adapterBluetoothDevice.notifyDataSetChanged();
+                    bluetoothDeviceAdapter.notifyDataSetChanged();
                     break;
 
                 case BluetoothAdapter.ACTION_DISCOVERY_FINISHED:
                     scanningProgressDialog.dismiss();
 
-                    if (listBluetoothDeviceName.size() <= 0) {
+                    if (bluetoothDeviceAdapter.getListBluetoothDevice().size() <= 0) {
                         Toast.makeText(MainActivity.this, "no device found", Toast.LENGTH_SHORT).show();
                     }
                     break;
@@ -94,10 +86,19 @@ public class MainActivity extends AppCompatActivity {
                     final int state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR);
                     final int prevState = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.ERROR);
 
-                    if (state == BluetoothDevice.BOND_BONDED && prevState == BluetoothDevice.BOND_BONDING) {
-                        Toast.makeText(MainActivity.this, "Paired", Toast.LENGTH_SHORT).show();
-                    } else if (state == BluetoothDevice.BOND_NONE && prevState == BluetoothDevice.BOND_BONDED) {
-                        Toast.makeText(MainActivity.this, "Unpaired", Toast.LENGTH_SHORT).show();
+                    if (state == BluetoothDevice.BOND_BONDING) {
+                        pairingProgressDialog.show();
+                    } else {
+                        pairingProgressDialog.dismiss();
+
+                        bluetoothDeviceAdapter.notifyDataSetChanged();
+
+                        if (state == BluetoothDevice.BOND_BONDED && prevState == BluetoothDevice.BOND_BONDING) {
+                            Toast.makeText(MainActivity.this, "Paired", Toast.LENGTH_SHORT).show();
+                        } else if (state == BluetoothDevice.BOND_NONE && prevState == BluetoothDevice.BOND_BONDED) {
+
+                            Toast.makeText(MainActivity.this, "Unpaired", Toast.LENGTH_SHORT).show();
+                        }
                     }
                     break;
             }
@@ -138,17 +139,13 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        adapterBluetoothDevice = new ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, listBluetoothDeviceName);
+        pairingProgressDialog = new ProgressDialog(this);
+        pairingProgressDialog.setMessage("Pairing ...");
+        pairingProgressDialog.setCancelable(false);
 
-        listviewBluetoothDevice.setAdapter(adapterBluetoothDevice);
-        listviewBluetoothDevice.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> adapterView, View view, int position, long l) {
-                BluetoothDevice device = listBluetoothDevice.get(position);
-                pairDevice(device);
-            }
-        });
+        bluetoothDeviceAdapter = new BluetoothDeviceAdapter(this);
+
+        listviewBluetoothDevice.setAdapter(bluetoothDeviceAdapter);
 
         buttonDiscovery.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -184,14 +181,4 @@ public class MainActivity extends AppCompatActivity {
 
         registerReceiver(mReceiver, filter);
     }
-
-    private void pairDevice(BluetoothDevice device) {
-        try {
-            Method method = device.getClass().getMethod("createBond", (Class[]) null);
-            method.invoke(device, (Object[]) null);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
 }
